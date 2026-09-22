@@ -1,0 +1,213 @@
+package dev.aditya.tamper_guard
+
+import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityServiceInfo
+import android.annotation.SuppressLint
+import android.content.Context
+import android.graphics.PixelFormat
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
+import android.view.View
+import android.view.WindowManager
+import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityManager
+import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
+
+/**
+ * Reacts to windows inside the service itself, with no trip through Dart, so
+ * a guarded screen is gone within a few frames of appearing.
+ */
+class GuardService : AccessibilityService() {
+    private val handler = Handler(Looper.getMainLooper())
+    private val hideShield = Runnable { removeShield() }
+    private val lastText = HashMap<Pair<String, String>, String>()
+    private var lastFired = 0L
+    private var shield: View? = null
+
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        instance = this
+    }
+
+    override fun onDestroy() {
+        removeShield()
+        if (instance === this) instance = null
+        super.onDestroy()
+    }
+
+    override fun onInterrupt() {}
+
+    override fun onAccessibilityEvent(event: AccessibilityEvent) {
+        val packageName = event.packageName?.toString() ?: return
+        val newWindow = event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+        val className = if (newWindow) event.className?.toString() else null
+        if (newWindow) {
+            Sinks.windows.emit(mapOf("packageName" to packageName, "className" to className))
+        }
+        // One action per event, and none while the last one still lands.
+        if (SystemClock.uptimeMillis() - lastFired >= THROTTLE_MILLIS) {
+            val rule = GuardStore.rules(this).firstOrNull { rule ->
+                val about = if (newWindow) rule.matchesWindow(packageName, className)
+                else rule.matchesContent(packageName)
+                about && (rule.viewId == null || hasView(rule))
+            }
+            if (rule != null) fire(rule, attempt = 0)
+        }
+        watchText(packageName)
+    }
+
+    /** Forgets the last texts so the next event re-emits them. */
+    fun resetTexts() = lastText.clear()
+
+    private fun fire(rule: GuardRule, attempt: Int) {
+        lastFired = SystemClock.uptimeMillis()
+        if (attempt == 0 && rule.shieldMillis > 0) showShield(rule.shieldMillis)
+        when (rule.action) {
+            GuardAction.BACK -> performGlobalAction(GLOBAL_ACTION_BACK)
+            GuardAction.HOME -> performGlobalAction(GLOBAL_ACTION_HOME)
+            GuardAction.NONE -> {}
+        }
+        // A dialog over the window takes the first Back; the window itself
+        // takes the next, so a view rule looks again while the user is still
+        // inside the package and the view is still on screen.
+        if (rule.viewId != null && rule.action != GuardAction.NONE && attempt < RETRIES) {
+            handler.postDelayed({
+                if (activePackage() in rule.packages && hasView(rule)) fire(rule, attempt + 1)
+            }, RETRY_MILLIS)
+        }
+    }
+
+    // Every window of the rule's packages is searched, so a screen under a
+    // dialog still counts.
+    private fun hasView(rule: GuardRule): Boolean {
+        var found = false
+        for (root in roots(rule.packages)) {
+            if (!found) {
+                for (node in root.findAccessibilityNodeInfosByViewId(rule.viewId!!)) {
+                    if (rule.text == null || node.text?.toString()?.trim() == rule.text) found = true
+                    node.release()
+                }
+            }
+            root.release()
+        }
+        return found
+    }
+
+    // Some builds leave a floating screen out of the window list, so the
+    // active window is read as well.
+    private fun roots(packages: Set<String>): List<AccessibilityNodeInfo> {
+        val roots = ArrayList<AccessibilityNodeInfo>()
+        val seen = HashSet<Int>()
+        val candidates = windows.mapNotNull { window -> window.root.also { window.release() } }
+        for (root in candidates + listOfNotNull(rootInActiveWindow)) {
+            if (root.packageName?.toString() in packages && seen.add(root.windowId)) {
+                roots.add(root)
+            } else {
+                root.release()
+            }
+        }
+        return roots
+    }
+
+    private fun activePackage(): String? {
+        val root = rootInActiveWindow ?: return null
+        val packageName = root.packageName?.toString()
+        root.release()
+        return packageName
+    }
+
+    // Touches land on the shield instead of the screen underneath while the
+    // action takes effect.
+    @SuppressLint("ClickableViewAccessibility")
+    private fun showShield(millis: Long) {
+        handler.removeCallbacks(hideShield)
+        if (shield == null) {
+            val view = View(this).apply {
+                setBackgroundColor(SHIELD_COLOR)
+                setOnTouchListener { _, _ -> true }
+            }
+            val params = WindowManager.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                PixelFormat.TRANSLUCENT,
+            )
+            try {
+                (getSystemService(Context.WINDOW_SERVICE) as WindowManager).addView(view, params)
+            } catch (_: RuntimeException) {
+                return
+            }
+            shield = view
+        }
+        handler.postDelayed(hideShield, millis)
+    }
+
+    private fun removeShield() {
+        handler.removeCallbacks(hideShield)
+        val view = shield ?: return
+        shield = null
+        try {
+            (getSystemService(Context.WINDOW_SERVICE) as WindowManager).removeView(view)
+        } catch (_: RuntimeException) {
+            // Already gone with the service.
+        }
+    }
+
+    private fun watchText(packageName: String) {
+        val watches = GuardStore.watches(this).filter { it.packageName == packageName }
+        if (watches.isEmpty()) return
+        val root = rootInActiveWindow ?: return
+        if (root.packageName?.toString() == packageName) {
+            for (watch in watches) {
+                val nodes = root.findAccessibilityNodeInfosByViewId(watch.viewId)
+                val text = nodes.firstOrNull()?.text?.toString()
+                nodes.forEach { it.release() }
+                if (text == null) continue
+                val key = packageName to watch.viewId
+                if (lastText[key] == text) continue
+                lastText[key] = text
+                Sinks.texts.emit(
+                    mapOf("packageName" to packageName, "viewId" to watch.viewId, "text" to text),
+                )
+            }
+        }
+        root.release()
+    }
+
+    companion object {
+        private const val THROTTLE_MILLIS = 250L
+        private const val RETRY_MILLIS = 150L
+        private const val RETRIES = 4
+        private const val SHIELD_COLOR = 0xE6000000.toInt()
+
+        @Volatile
+        var instance: GuardService? = null
+            private set
+
+        /** Whether the user has switched this service on, and accessibility with it. */
+        fun isEnabled(context: Context): Boolean {
+            val manager = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
+            return manager
+                .getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+                .any { info ->
+                    val service = info.resolveInfo.serviceInfo
+                    service.packageName == context.packageName &&
+                        service.name == GuardService::class.java.name
+                }
+        }
+    }
+}
+
+// Nodes and windows are pooled before API 33.
+private fun AccessibilityNodeInfo.release() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) @Suppress("DEPRECATION") recycle()
+}
+
+private fun AccessibilityWindowInfo.release() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) @Suppress("DEPRECATION") recycle()
+}

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_service_description">Closes the Settings app on sight and reads Chrome\'s address bar, to demonstrate Tamper Guard.</string>
+    <string name="device_admin_label">Tamper Guard example</string>
+    <string name="device_admin_description">Demonstrates a device admin with a deactivation warning.</string>
+</resources>

@@ -1,0 +1,70 @@
+group = "dev.aditya.tamper_guard"
+version = "1.0-SNAPSHOT"
+
+buildscript {
+    ext.kotlin_version = "2.4.10"
+    repositories {
+        google()
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath("com.android.tools.build:gradle:9.3.1")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version")
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+// Kotlin is compiled by AGP 9 itself or by the Kotlin plugin Flutter applies
+// for older toolchains; the plugin never applies it on its own.
+apply plugin: "com.android.library"
+
+android {
+    namespace = "dev.aditya.tamper_guard"
+
+    compileSdk = 36
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
+    }
+
+    defaultConfig {
+        minSdk = 24
+    }
+
+    sourceSets {
+        main.java.srcDirs += "src/main/kotlin"
+        test.java.srcDirs += "src/test/kotlin"
+    }
+
+    dependencies {
+        testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
+        // The SDK's org.json is a stub off the device.
+        testImplementation("org.json:json:20240303")
+    }
+
+    testOptions {
+        unitTests.all {
+            useJUnitPlatform()
+
+            testLogging {
+               events "passed", "skipped", "failed", "standardOut", "standardError"
+               outputs.upToDateWhen {false}
+               showStandardStreams = true
+            }
+        }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11
+    }
+}
