@@ -2,14 +2,16 @@
 enum GuardAction { none, back, home }
 
 /// A window to react to: any window of one of [packages], narrowed by the
-/// activity or dialog class names of the window and/or by a view with a given
-/// id (and text) somewhere inside it.
+/// activity or dialog class names of the window, by a view with a given id
+/// (and text), or by [text] found anywhere in the window when no [viewId] is
+/// given.
 ///
 /// Class names come from the window's own accessibility event, so a rule
 /// with [classNames] fires the moment such a window appears. A rule with a
-/// [viewId] also fires on later changes inside a matching window, and keeps
-/// acting until the view is gone, so a dialog over the window does not shield
-/// it.
+/// [viewId] or [text] also fires on later changes inside a matching window,
+/// and keeps acting until it is gone, so a dialog over the window does not
+/// shield it. A [text] rule without a [viewId] matches the text wherever it
+/// appears, which holds across builds that name their views differently.
 class GuardRule {
   const GuardRule({
     required this.packages,

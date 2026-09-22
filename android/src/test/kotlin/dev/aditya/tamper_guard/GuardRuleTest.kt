@@ -43,6 +43,23 @@ internal class GuardRuleTest {
     }
 
     @Test
+    fun scanIsNeededOnlyForViewOrText() {
+        assertTrue(rule.needsScan)
+        val classOnly = GuardRule.fromMap(
+            mapOf("packages" to listOf("com.android.settings"), "classNames" to listOf("A"), "action" to "back"),
+        )
+        val textOnly = GuardRule.fromMap(
+            mapOf("packages" to listOf("com.android.settings"), "text" to "My app", "action" to "home"),
+        )
+        assertFalse(classOnly.needsScan)
+        assertTrue(textOnly.needsScan)
+        // A text-only rule reaches content events; a class rule does not.
+        assertTrue(textOnly.matchesContent("com.android.settings"))
+        assertFalse(classOnly.matchesContent("com.android.settings"))
+        assertTrue(textOnly.matchesWindow("com.android.settings", "anything"))
+    }
+
+    @Test
     fun watchesRoundTrip() {
         val watch = TextWatch.fromMap(mapOf("packageName" to "com.android.chrome", "viewId" to "com.android.chrome:id/url_bar"))
         assertEquals(watch, TextWatch.fromJson(watch.toJson()))

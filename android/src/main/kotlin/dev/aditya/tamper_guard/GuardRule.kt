@@ -8,8 +8,9 @@ enum class GuardAction { NONE, BACK, HOME }
 
 /**
  * A window to react to: any window of one of [packages], narrowed by the
- * activity or dialog class names of the window and/or by a view with a
- * given id (and text) somewhere inside it.
+ * activity or dialog class names of the window, by a view with a given id
+ * (and text), or by [text] found anywhere in the window when no [viewId] is
+ * set.
  */
 data class GuardRule(
     val packages: Set<String>,
@@ -19,6 +20,9 @@ data class GuardRule(
     val action: GuardAction,
     val shieldMillis: Long,
 ) {
+    /** Whether matching this rule needs the window contents, not just the window. */
+    val needsScan: Boolean get() = viewId != null || text != null
+
     /** A new window from a state-changed event; a view check may still follow. */
     fun matchesWindow(packageName: String?, className: String?): Boolean =
         packageName in packages && (classNames.isEmpty() || className in classNames)

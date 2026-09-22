@@ -151,10 +151,14 @@ await TamperGuard.requestDeviceAdmin(explanation: 'Keeps My app installed.');
 - `classNames`: the activity or dialog class the window reports. Such rules
   fire once, when the window appears.
 - `viewId` and `text`: a view found anywhere in a matching package's windows,
-  with exactly that (trimmed) text when `text` is given. Such rules also fire
-  on later changes inside the window, and after firing they look again a few
-  times while the user is still inside the package, so a dialog on top takes
-  the first Back and the screen takes the next.
+  with exactly that (trimmed) text when `text` is given.
+- `text` without `viewId`: that exact (trimmed) text on any view in the
+  window, whatever its id, which holds across OEM builds that name their views
+  differently.
+  Rules with a `viewId` or `text` also fire on later changes inside the
+  window, and after firing they look again a few times while the user is still
+  inside the package, so a dialog on top takes the first Back and the screen
+  takes the next.
 - `action`: `back` (default), `home`, or `none` to only shield.
 - `shield`: how long a translucent, touch-consuming overlay covers the screen
   after the rule fires.

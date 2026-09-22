@@ -41,7 +41,8 @@ class GuardService : AccessibilityService() {
     override fun onInterrupt() {}
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
-        val packageName = event.packageName?.toString() ?: return
+        // A windows-changed event carries no package, so the front window's is used.
+        val packageName = event.packageName?.toString() ?: activePackage() ?: return
         val newWindow = event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
         val className = if (newWindow) event.className?.toString() else null
         if (newWindow) {
@@ -52,7 +53,7 @@ class GuardService : AccessibilityService() {
             val rule = GuardStore.rules(this).firstOrNull { rule ->
                 val about = if (newWindow) rule.matchesWindow(packageName, className)
                 else rule.matchesContent(packageName)
-                about && (rule.viewId == null || hasView(rule))
+                about && (!rule.needsScan || hasMatch(rule))
             }
             if (rule != null) fire(rule, attempt = 0)
         }
@@ -73,27 +74,49 @@ class GuardService : AccessibilityService() {
         // A dialog over the window takes the first Back; the window itself
         // takes the next, so a view rule looks again while the user is still
         // inside the package and the view is still on screen.
-        if (rule.viewId != null && rule.action != GuardAction.NONE && attempt < RETRIES) {
+        if (rule.needsScan && rule.action != GuardAction.NONE && attempt < RETRIES) {
             handler.postDelayed({
-                if (activePackage() in rule.packages && hasView(rule)) fire(rule, attempt + 1)
+                if (activePackage() in rule.packages && hasMatch(rule)) fire(rule, attempt + 1)
             }, RETRY_MILLIS)
         }
     }
 
     // Every window of the rule's packages is searched, so a screen under a
     // dialog still counts.
-    private fun hasView(rule: GuardRule): Boolean {
+    private fun hasMatch(rule: GuardRule): Boolean {
         var found = false
         for (root in roots(rule.packages)) {
             if (!found) {
-                for (node in root.findAccessibilityNodeInfosByViewId(rule.viewId!!)) {
-                    if (rule.text == null || node.text?.toString()?.trim() == rule.text) found = true
-                    node.release()
-                }
+                found = if (rule.viewId != null) hasViewId(root, rule)
+                else hasText(root, rule.text!!, intArrayOf(MAX_NODES))
             }
             root.release()
         }
         return found
+    }
+
+    private fun hasViewId(root: AccessibilityNodeInfo, rule: GuardRule): Boolean {
+        var found = false
+        for (node in root.findAccessibilityNodeInfosByViewId(rule.viewId!!)) {
+            if (rule.text == null || node.text?.toString()?.trim() == rule.text) found = true
+            node.release()
+        }
+        return found
+    }
+
+    // A bounded walk, so a text rule needs no view id and holds across OEM
+    // screens that name their views differently. [node] is released by the
+    // caller; children fetched here are not.
+    private fun hasText(node: AccessibilityNodeInfo, text: String, budget: IntArray): Boolean {
+        if (node.text?.toString()?.trim() == text) return true
+        if (budget[0]-- <= 0) return false
+        for (index in 0 until node.childCount) {
+            val child = node.getChild(index) ?: continue
+            val found = hasText(child, text, budget)
+            child.release()
+            if (found) return true
+        }
+        return false
     }
 
     // Some builds leave a floating screen out of the window list, so the
@@ -183,6 +206,7 @@ class GuardService : AccessibilityService() {
         private const val THROTTLE_MILLIS = 250L
         private const val RETRY_MILLIS = 150L
         private const val RETRIES = 4
+        private const val MAX_NODES = 600
         private const val SHIELD_COLOR = 0xE6000000.toInt()
 
         @Volatile
