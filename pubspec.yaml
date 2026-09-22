@@ -1,6 +1,6 @@
 name: tamper_guard
 description: Android accessibility service that closes matching windows natively the instant they appear, streams window and view-text changes, plus a device admin with a deactivation warning.
-version: 0.2.0
+version: 0.3.0
 homepage: https://github.com/1AdityaX/flutter_plugin_tamper_guard
 
 environment:

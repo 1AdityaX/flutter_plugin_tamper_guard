@@ -27,7 +27,7 @@ to a window the moment it shows.
 
 ```yaml
 dependencies:
-  tamper_guard: ^0.1.0
+  tamper_guard: ^0.3.0
 ```
 
 | Android | iOS | macOS | Web | Linux | Windows |
