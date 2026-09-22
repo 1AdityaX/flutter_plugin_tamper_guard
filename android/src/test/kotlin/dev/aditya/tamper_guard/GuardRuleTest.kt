@@ -60,6 +60,24 @@ internal class GuardRuleTest {
     }
 
     @Test
+    fun classSuffixesCoverRenamedScreens() {
+        val bySuffix = GuardRule.fromMap(
+            mapOf(
+                "packages" to listOf("com.android.settings"),
+                "classNameSuffixes" to listOf("DeviceAdminAdd"),
+                "action" to "home",
+            ),
+        )
+        assertTrue(bySuffix.matchesWindow("com.android.settings", "com.android.settings.applications.specialaccess.deviceadmin.DeviceAdminAdd"))
+        assertTrue(bySuffix.matchesWindow("com.android.settings", "com.samsung.android.settings.deviceadmin.SecDeviceAdminAdd"))
+        assertFalse(bySuffix.matchesWindow("com.android.settings", "com.android.settings.SubSettings"))
+        assertFalse(bySuffix.matchesWindow("com.android.settings", null))
+        assertFalse(bySuffix.matchesContent("com.android.settings"))
+        assertFalse(bySuffix.needsScan)
+        assertEquals(bySuffix, GuardRule.fromJson(bySuffix.toJson()))
+    }
+
+    @Test
     fun watchesRoundTrip() {
         val watch = TextWatch.fromMap(mapOf("packageName" to "com.android.chrome", "viewId" to "com.android.chrome:id/url_bar"))
         assertEquals(watch, TextWatch.fromJson(watch.toJson()))

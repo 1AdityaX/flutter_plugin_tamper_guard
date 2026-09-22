@@ -41,6 +41,7 @@ void main() {
       {
         'packages': ['com.android.settings'],
         'classNames': ['com.android.settings.DeviceAdminAdd'],
+        'classNameSuffixes': <String>[],
         'viewId': 'com.android.settings:id/admin_name',
         'text': 'My app',
         'action': 'back',
@@ -49,6 +50,7 @@ void main() {
       {
         'packages': ['com.example'],
         'classNames': <String>[],
+        'classNameSuffixes': <String>[],
         'viewId': null,
         'text': null,
         'action': 'home',
@@ -77,19 +79,26 @@ void main() {
     expect(calls.last.arguments, 'back');
   });
 
-  test('device admin calls carry the explanation and warning', () async {
+  test('device admin calls carry the explanation, warning and action',
+      () async {
     reply = true;
     expect(
       await TamperGuard.requestDeviceAdmin(explanation: 'Keeps the app.'),
       isTrue,
     );
     await TamperGuard.setDeviceAdminDisableWarning('Locked.');
+    await TamperGuard.setDeviceAdminDisableAction(
+      GuardAction.home,
+      shield: const Duration(seconds: 1),
+    );
     reply = null;
     expect(await TamperGuard.isDeviceAdminActive, isFalse);
 
     expect(calls[0].arguments, {'explanation': 'Keeps the app.'});
     expect(calls[1].arguments, 'Locked.');
-    expect(calls[2].method, 'isDeviceAdminActive');
+    expect(calls[2].method, 'setDeviceAdminDisableAction');
+    expect(calls[2].arguments, {'action': 'home', 'shieldMillis': 1000});
+    expect(calls[3].method, 'isDeviceAdminActive');
   });
 
   test('streams decode the maps the service emits', () async {

@@ -9,6 +9,7 @@ import android.database.ContentObserver
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.util.Log
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
@@ -77,6 +78,7 @@ class TamperGuardPlugin :
             "setRules" -> {
                 val rules = (call.arguments as List<*>).map { GuardRule.fromMap(it as Map<*, *>) }
                 GuardStore.saveRules(context, rules)
+                Log.i("TamperGuard", "setRules ${rules.size}")
                 result.success(null)
             }
             "setTextWatches" -> {
@@ -98,6 +100,14 @@ class TamperGuardPlugin :
             "removeDeviceAdmin" -> removeAdmin(result, attempt = 0)
             "setDeviceAdminDisableWarning" -> {
                 GuardStore.saveWarning(context, call.arguments as String?)
+                result.success(null)
+            }
+            "setDeviceAdminDisableAction" -> {
+                GuardStore.saveDisableAction(
+                    context,
+                    GuardAction.valueOf(call.argument<String>("action")!!.uppercase()),
+                    (call.argument<Number>("shieldMillis") ?: 0).toLong(),
+                )
                 result.success(null)
             }
             else -> result.notImplemented()

@@ -18,8 +18,10 @@ to a window the moment it shows.
 - Rules persist and run even when no Flutter engine is alive
 - Stream every window that comes to the front, with its class name
 - Stream the text of chosen views (an address bar, a title) as it changes
-- Device admin: activate, check, remove, and a deactivation warning that turns
-  Settings' one-tap Deactivate into a confirmation dialog
+- Device admin: activate, check, remove, a deactivation warning that turns
+  Settings' one-tap Deactivate into a confirmation dialog, and a deactivation
+  action that leaves and shields the screen the moment Deactivate is tapped,
+  so that confirmation is never answered
 
 ## Getting started
 
@@ -140,8 +142,14 @@ TamperGuard.textChanges.listen((change) => debugPrint(change.text));
 // Every window that comes to the front, with its activity class.
 TamperGuard.windowChanges.listen((window) => debugPrint(window.className));
 
-// Device admin with a confirmation step before deactivation.
+// Device admin that cannot be deactivated while the service is on: the tap
+// on Deactivate asks this app first, the service goes Home and shields the
+// screen, and the confirmation the warning adds is never answered.
 await TamperGuard.setDeviceAdminDisableWarning('My app is locked.');
+await TamperGuard.setDeviceAdminDisableAction(
+  GuardAction.home,
+  shield: Duration(seconds: 1),
+);
 await TamperGuard.requestDeviceAdmin(explanation: 'Keeps My app installed.');
 ```
 
@@ -150,6 +158,9 @@ await TamperGuard.requestDeviceAdmin(explanation: 'Keeps My app installed.');
 - `packages` (required): the window's package.
 - `classNames`: the activity or dialog class the window reports. Such rules
   fire once, when the window appears.
+- `classNameSuffixes`: matched against the end of that class name, so
+  `DeviceAdminAdd` covers the stock screen and a manufacturer's
+  `SecDeviceAdminAdd` alike.
 - `viewId` and `text`: a view found anywhere in a matching package's windows,
   with exactly that (trimmed) text when `text` is given.
 - `text` without `viewId`: that exact (trimmed) text on any view in the

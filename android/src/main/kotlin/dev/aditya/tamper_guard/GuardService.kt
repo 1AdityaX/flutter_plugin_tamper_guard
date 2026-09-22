@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.util.Log
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
@@ -30,6 +31,7 @@ class GuardService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
+        Log.i(TAG, "service connected")
     }
 
     override fun onDestroy() {
@@ -46,6 +48,7 @@ class GuardService : AccessibilityService() {
         val newWindow = event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
         val className = if (newWindow) event.className?.toString() else null
         if (newWindow) {
+            Log.d(TAG, "window pkg=$packageName class=$className rules=${GuardStore.rules(this).size}")
             Sinks.windows.emit(mapOf("packageName" to packageName, "className" to className))
         }
         // One action per event, and none while the last one still lands.
@@ -63,13 +66,28 @@ class GuardService : AccessibilityService() {
     /** Forgets the last texts so the next event re-emits them. */
     fun resetTexts() = lastText.clear()
 
-    private fun fire(rule: GuardRule, attempt: Int) {
+    /** Shields the screen and leaves it; also what the device admin's deactivation triggers. */
+    fun act(action: GuardAction, shieldMillis: Long) {
+        Log.i(TAG, "act $action shield=$shieldMillis")
         lastFired = SystemClock.uptimeMillis()
-        if (attempt == 0 && rule.shieldMillis > 0) showShield(rule.shieldMillis)
-        when (rule.action) {
+        if (shieldMillis > 0) showShield(shieldMillis)
+        when (action) {
             GuardAction.BACK -> performGlobalAction(GLOBAL_ACTION_BACK)
             GuardAction.HOME -> performGlobalAction(GLOBAL_ACTION_HOME)
             GuardAction.NONE -> {}
+        }
+    }
+
+    private fun fire(rule: GuardRule, attempt: Int) {
+        if (attempt == 0) {
+            act(rule.action, rule.shieldMillis)
+        } else {
+            lastFired = SystemClock.uptimeMillis()
+            when (rule.action) {
+                GuardAction.BACK -> performGlobalAction(GLOBAL_ACTION_BACK)
+                GuardAction.HOME -> performGlobalAction(GLOBAL_ACTION_HOME)
+                GuardAction.NONE -> {}
+            }
         }
         // A dialog over the window takes the first Back; the window itself
         // takes the next, so a view rule looks again while the user is still
@@ -108,7 +126,11 @@ class GuardService : AccessibilityService() {
     // screens that name their views differently. [node] is released by the
     // caller; children fetched here are not.
     private fun hasText(node: AccessibilityNodeInfo, text: String, budget: IntArray): Boolean {
-        if (node.text?.toString()?.trim() == text) return true
+        if (node.text?.toString()?.trim() == text ||
+            node.contentDescription?.toString()?.trim() == text
+        ) {
+            return true
+        }
         if (budget[0]-- <= 0) return false
         for (index in 0 until node.childCount) {
             val child = node.getChild(index) ?: continue
@@ -208,6 +230,7 @@ class GuardService : AccessibilityService() {
         private const val RETRIES = 4
         private const val MAX_NODES = 600
         private const val SHIELD_COLOR = 0xE6000000.toInt()
+        private const val TAG = "TamperGuard"
 
         @Volatile
         var instance: GuardService? = null

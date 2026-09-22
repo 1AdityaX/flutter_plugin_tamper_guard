@@ -5,15 +5,17 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Rules, watches and the admin warning: held in memory for the service and
- * in preferences for the next process, so the guard works before any Flutter
- * engine has started.
+ * Rules, watches and what to do when the admin is asked to deactivate: held
+ * in memory for the service and in preferences for the next process, so the
+ * guard works before any Flutter engine has started.
  */
 internal object GuardStore {
     private const val PREFS = "tamper_guard"
     private const val RULES = "rules"
     private const val WATCHES = "watches"
     private const val WARNING = "admin_warning"
+    private const val DISABLE_ACTION = "admin_disable_action"
+    private const val DISABLE_SHIELD = "admin_disable_shield"
 
     @Volatile private var rules: List<GuardRule>? = null
     @Volatile private var watches: List<TextWatch>? = null
@@ -40,6 +42,18 @@ internal object GuardStore {
 
     fun saveWarning(context: Context, value: String?) {
         prefs(context).edit().putString(WARNING, value).apply()
+    }
+
+    fun disableAction(context: Context): GuardAction =
+        GuardAction.valueOf(prefs(context).getString(DISABLE_ACTION, GuardAction.NONE.name)!!)
+
+    fun disableShieldMillis(context: Context): Long = prefs(context).getLong(DISABLE_SHIELD, 0)
+
+    fun saveDisableAction(context: Context, action: GuardAction, shieldMillis: Long) {
+        prefs(context).edit()
+            .putString(DISABLE_ACTION, action.name)
+            .putLong(DISABLE_SHIELD, shieldMillis)
+            .apply()
     }
 
     private fun <T> load(context: Context, key: String, parse: (JSONObject) -> T): List<T> {

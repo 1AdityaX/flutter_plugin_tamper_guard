@@ -74,4 +74,17 @@ class TamperGuard {
   /// Deactivate. With null, Android deactivates without asking.
   static Future<void> setDeviceAdminDisableWarning(String? warning) =>
       _methods.invokeMethod<void>('setDeviceAdminDisableWarning', warning);
+
+  /// What the service does the moment the user taps Deactivate for this
+  /// app's admin: leave the screen and shield it, so the confirmation that a
+  /// warning adds is never answered. [GuardAction.none] turns it off. Needs
+  /// the service to be on; the warning alone still shows without it.
+  static Future<void> setDeviceAdminDisableAction(
+    GuardAction action, {
+    Duration shield = Duration.zero,
+  }) =>
+      _methods.invokeMethod<void>('setDeviceAdminDisableAction', {
+        'action': action.name,
+        'shieldMillis': shield.inMilliseconds,
+      });
 }

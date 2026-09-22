@@ -2,12 +2,14 @@
 enum GuardAction { none, back, home }
 
 /// A window to react to: any window of one of [packages], narrowed by the
-/// activity or dialog class names of the window, by a view with a given id
-/// (and text), or by [text] found anywhere in the window when no [viewId] is
-/// given.
+/// activity or dialog class names of the window (exact in [classNames], or
+/// by suffix in [classNameSuffixes] for manufacturers that rename a screen),
+/// by a view with a given id (and text), or by [text] found anywhere in the
+/// window when no [viewId] is given.
 ///
 /// Class names come from the window's own accessibility event, so a rule
-/// with [classNames] fires the moment such a window appears. A rule with a
+/// with [classNames] or [classNameSuffixes] fires the moment such a window
+/// appears. A rule with a
 /// [viewId] or [text] also fires on later changes inside a matching window,
 /// and keeps acting until it is gone, so a dialog over the window does not
 /// shield it. A [text] rule without a [viewId] matches the text wherever it
@@ -16,6 +18,7 @@ class GuardRule {
   const GuardRule({
     required this.packages,
     this.classNames = const {},
+    this.classNameSuffixes = const {},
     this.viewId,
     this.text,
     this.action = GuardAction.back,
@@ -24,6 +27,11 @@ class GuardRule {
 
   final Set<String> packages;
   final Set<String> classNames;
+
+  /// Matched against the end of the window's class name, so
+  /// `DeviceAdminAdd` covers both the stock screen and a manufacturer's
+  /// `SecDeviceAdminAdd`.
+  final Set<String> classNameSuffixes;
 
   /// A fully qualified view id such as `com.android.settings:id/admin_name`.
   final String? viewId;
@@ -39,6 +47,7 @@ class GuardRule {
   Map<String, Object?> toMap() => {
         'packages': [...packages],
         'classNames': [...classNames],
+        'classNameSuffixes': [...classNameSuffixes],
         'viewId': viewId,
         'text': text,
         'action': action.name,
